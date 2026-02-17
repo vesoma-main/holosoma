@@ -1,3 +1,30 @@
+# Quick Demo for Vesoma Users
+
+This demo runs a pre-trained checkpoint on a robot in MuJoCo.
+For more details, see [Sim-to-Sim Locomotion Workflow](docs/workflows/sim-to-sim-locomotion.md).
+
+Open one terminal for running MuJoCo: install dependencies, source python environment, and launch MuJoCo
+```bash
+bash scripts/setup_mujoco.sh
+source scripts/source_mujoco_setup.sh
+python src/holosoma/holosoma/run_sim.py robot:g1-29dof
+```
+
+Open another terminal for running the policy: install dependencies, source python environment, and launch the policy
+```bash
+bash scripts/setup_inference.sh
+source scripts/source_inference_setup.sh
+python3 src/holosoma_inference/holosoma_inference/run_policy.py inference:g1-29dof-loco \
+    --task.model-path src/holosoma_inference/holosoma_inference/models/loco/g1_29dof/fastsac_g1_29dof.onnx \
+    --task.no-use-joystick \
+    --task.interface lo
+```
+
+- In MuJoCo window, press `8` to lower the gantry; press `9` to remove the gantry
+- In policy terminal, press `]` to activate the policy; press `=` to enter walking mode, and use keyboard (`w` `a` `s` `d` for linear, `q` `e` for angular) to control velocity
+
+This completes the demo. The same interface can be directly applied to controlling the real robot.
+
 # Holosoma
 
 Holosoma (Greek: "whole-body") is a comprehensive humanoid robotics framework for training and deploying reinforcement learning policies on humanoid robots, as well as motion retargeting. Supports locomotion (velocity tracking) and whole-body tracking tasks across multiple simulators (IsaacGym, IsaacSim, MJWarp, MuJoCo) with algorithms like PPO and FastSAC.
