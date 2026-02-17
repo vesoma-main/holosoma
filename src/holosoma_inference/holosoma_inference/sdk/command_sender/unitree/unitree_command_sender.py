@@ -43,14 +43,14 @@ class UnitreeCommandSender(BasicCommandSender):
         self.low_cmd.level_flag = 0xFF
         self.low_cmd.gpio = 0
 
-        for i in range(self.robot.NUM_MOTORS):
+        for i in range(self.config.num_motors):
             if self.is_weak_motor(i):
                 self.low_cmd.motor_cmd[i].mode = 0x01
             else:
                 self.low_cmd.motor_cmd[i].mode = 0x0A
-            self.low_cmd.motor_cmd[i].q = self.robot.UNITREE_LEGGED_CONST["PosStopF"]
+            self.low_cmd.motor_cmd[i].q = self.config.unitree_legged_const["PosStopF"]
             self.low_cmd.motor_cmd[i].kp = 0
-            self.low_cmd.motor_cmd[i].dq = self.robot.UNITREE_LEGGED_CONST["VelStopF"]
+            self.low_cmd.motor_cmd[i].dq = self.config.unitree_legged_const["VelStopF"]
             self.low_cmd.motor_cmd[i].kd = 0
             self.low_cmd.motor_cmd[i].tau = 0
 

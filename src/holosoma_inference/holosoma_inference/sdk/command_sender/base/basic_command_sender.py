@@ -39,7 +39,7 @@ class BasicCommandSender(ABC):
         self.weak_motor_joint_index = []
         weak_motor_cfg = _get_config_value(self.config, "weak_motor_joint_index")
         if weak_motor_cfg:
-            for value in self.robot.WeakMotorJointIndex.values():
+            for value in weak_motor_cfg.values():
                 self.weak_motor_joint_index.append(value)
 
         self.no_action = 0

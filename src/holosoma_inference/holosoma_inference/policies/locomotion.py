@@ -113,9 +113,9 @@ class LocomotionPolicy(BasePolicy):
         self.lin_vel_command[0, 1] = 0.0
         self.logger.info(colored("Velocities set to zero", "blue"))
 
-    def _print_control_status(self):
+    def _perform_print_control_status(self):
         """Print current control status."""
-        super()._print_control_status()
+        super()._perform_print_control_status()
 
         # Extract values for better formatting
         lin_vel_x = self.lin_vel_command[0, 0]
@@ -124,10 +124,9 @@ class LocomotionPolicy(BasePolicy):
         is_walking = self.stand_command[0, 0] == 1
 
         # Print with clear labels and units
-        mode = "Walking" if is_walking else "Standing"
         status = "✓ applied" if is_walking else "✗ not applied"
-        print(f"Linear velocity: x={lin_vel_x:+.2f} m/s, y={lin_vel_y:+.2f} m/s")
-        print(f"Angular velocity: {ang_vel_z:+.2f} rad/s")
-        print(f"Mode: {mode} ({status})")
-        print("💡 Terminal keys: W/A/S/D (lin) | Q/E (ang) | = (toggle mode)")
-        print("🎬 MuJoCo keys (in simulator only): 7/8 (band) | 9 (toggle) | BACKSPACE (reset)")
+        self.logger.info(f"Linear velocity: x={lin_vel_x:+.2f} m/s, y={lin_vel_y:+.2f} m/s")
+        self.logger.info(f"Angular velocity: {ang_vel_z:+.2f} rad/s")
+        self.logger.info(f"Mode: {'Walking' if is_walking else 'Standing'} ({status})")
+        self.logger.info("Terminal keys: W/A/S/D (lin) | Q/E (ang) | = (toggle mode)")
+        self.logger.info("MuJoCo keys (in simulator only): 7/8 (band) | 9 (toggle) | BACKSPACE (reset)")

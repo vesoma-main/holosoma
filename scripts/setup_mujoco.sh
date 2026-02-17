@@ -60,6 +60,10 @@ WARP_SENTINEL_FILE=${WORKSPACE_DIR}/.env_setup_finished_$CONDA_ENV_NAME_warp
 
 mkdir -p $WORKSPACE_DIR
 
+# Detect OS and architecture (needed throughout the script)
+OS_NAME="$(uname -s)"
+ARCH_NAME="$(uname -m)"
+
 if [[ ! -f $SENTINEL_FILE ]]; then
   # Detect OS and architecture
   OS_NAME="$(uname -s)"
@@ -128,8 +132,16 @@ if [[ ! -f $SENTINEL_FILE ]]; then
   #pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
   #pip install numpy scipy matplotlib
 
+  # Install Unitree Python SDK from source on macOS (no prebuilt wheels available)
+  if [[ "$OS_NAME" == "Darwin" ]]; then
+    if [[ ! -d $WORKSPACE_DIR/unitree_sdk2_python ]]; then
+      git clone https://github.com/unitreerobotics/unitree_sdk2_python.git $WORKSPACE_DIR/unitree_sdk2_python
+    fi
+    pip install -e $WORKSPACE_DIR/unitree_sdk2_python/
+    $CONDA_ROOT/bin/conda install pinocchio -y -c conda-forge --override-channels
+  fi
+
   # Install Holosoma packages
-  echo "Installing Holosoma packages"
   pip install -U pip
   if [[ "$OS_NAME" == "Linux" ]]; then
     pip install -e "$ROOT_DIR/src/holosoma[unitree, booster]"
@@ -137,8 +149,7 @@ if [[ ! -f $SENTINEL_FILE ]]; then
     echo "Warning: only unitree support for osx"
     pip install -e "$ROOT_DIR/src/holosoma[unitree]"
   else
-    echo "Unsupported OS: $OS_NAME"
-    exit 1
+    pip install -e $ROOT_DIR/src/holosoma[unitree,booster]
   fi
 
   # Validate MuJoCo installation

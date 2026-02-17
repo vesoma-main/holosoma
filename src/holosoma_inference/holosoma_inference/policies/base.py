@@ -97,7 +97,7 @@ class BasePolicy:
             ip = ni.ifaddresses(self.config.task.interface)[ni.AF_INET][0]["addr"]
             ChannelFactory.Instance().Init(self.config.task.domain_id, ip)
         else:
-            pass  # No channel initialization needed for Unitree binding / other robots
+            pass  # Unitree DDS channel factory is initialized by InterfaceWrapper
 
     def _init_obs_config(self):
         """Initialize observation metadata and history buffers."""
@@ -274,6 +274,9 @@ class BasePolicy:
         self.cmd_q = np.zeros(self.num_dofs)
         self.cmd_dq = np.zeros(self.num_dofs)
         self.cmd_tau = np.zeros(self.num_dofs)
+        
+        # Async print request flag
+        self.print_status_request = False
 
     def _init_phase_components(self):
         """Initialize phase components."""
@@ -733,7 +736,6 @@ class BasePolicy:
         """Handle start policy action."""
         self.use_policy_action = True
         self.get_ready_state = False
-        self.logger.info(colored("Using policy actions", "blue"))
         self.phase = np.array([[0.0, np.pi]])
         if hasattr(self.interface, "no_action"):
             self.interface.no_action = 0
@@ -742,7 +744,6 @@ class BasePolicy:
         """Handle stop policy action."""
         self.use_policy_action = False
         self.get_ready_state = False
-        self.logger.info("Actions set to zero")
         if hasattr(self.interface, "no_action"):
             self.interface.no_action = 1
 
@@ -750,7 +751,6 @@ class BasePolicy:
         """Handle initialization state."""
         self.get_ready_state = True
         self.init_count = 0
-        self.logger.info("Setting to init state")
         if hasattr(self.interface, "no_action"):
             self.interface.no_action = 0
 
@@ -781,7 +781,11 @@ class BasePolicy:
             self.interface.kp_level = 1.0
 
     def _print_control_status(self):
-        """Print current control status."""
+        """Request to print control status (deferred to main thread)."""
+        self.print_status_request = True
+
+    def _perform_print_control_status(self):
+        """Actually print current control status (called from main thread)."""
         self.logger.info("------------ Control Status ------------")
         if self.active_model_path:
             total = len(self.model_paths)
@@ -803,6 +807,12 @@ class BasePolicy:
 
                 if self.use_joystick and self.interface.get_joystick_msg() is not None:
                     self.process_joystick_input()
+                
+                # Handle deferred print requests
+                if self.print_status_request:
+                    self._perform_print_control_status()
+                    self.print_status_request = False
+
                 if self.use_phase:
                     self.update_phase_time()
 

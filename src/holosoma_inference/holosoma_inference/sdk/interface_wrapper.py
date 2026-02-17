@@ -42,35 +42,45 @@ class InterfaceWrapper:
     def _init_sdk_components(self):
         """Initialize the appropriate backend based on SDK type."""
         if self.sdk_type == "booster":
-            # Use sdk2py Python interface for booster
             self.backend = "sdk2py"
             self.command_sender = create_command_sender(self.robot_config)
             self.state_processor = create_state_processor(self.robot_config)
         elif self.sdk_type == "unitree":
             try:
                 import unitree_interface
-            except ImportError as e:
-                raise ImportError("unitree_interface python binding not found.") from e
-            # Use C++/pybind11 binding (unitree only)
-            self.backend = "binding"
-            # Parse robot type
-            robot_type_map = {
-                "G1": unitree_interface.RobotType.G1,
-                "H1": unitree_interface.RobotType.H1,
-                "H1_2": unitree_interface.RobotType.H1_2,
-                "GO2": unitree_interface.RobotType.GO2,
-            }
-            # Parse message type
-            message_type_map = {"HG": unitree_interface.MessageType.HG, "GO2": unitree_interface.MessageType.GO2}
-            self.unitree_interface = unitree_interface.create_robot(
-                self.interface_str,
-                robot_type_map[self.robot_config.robot.upper()],
-                message_type_map[self.robot_config.message_type.upper()],
-            )
-            # Set control mode to PR (Pitch/Roll)
-            self.unitree_interface.set_control_mode(unitree_interface.ControlMode.PR)
-            control_mode = self.unitree_interface.get_control_mode()
-            print(f"Control mode set to: {'PR' if control_mode == unitree_interface.ControlMode.PR else 'AB'}")
+
+                self.backend = "binding"
+                robot_type_map = {
+                    "G1": unitree_interface.RobotType.G1,
+                    "H1": unitree_interface.RobotType.H1,
+                    "H1_2": unitree_interface.RobotType.H1_2,
+                    "GO2": unitree_interface.RobotType.GO2,
+                }
+                message_type_map = {"HG": unitree_interface.MessageType.HG, "GO2": unitree_interface.MessageType.GO2}
+                self.unitree_interface = unitree_interface.create_robot(
+                    self.interface_str,
+                    robot_type_map[self.robot_config.robot.upper()],
+                    message_type_map[self.robot_config.message_type.upper()],
+                )
+                self.unitree_interface.set_control_mode(unitree_interface.ControlMode.PR)
+                control_mode = self.unitree_interface.get_control_mode()
+                print(f"Control mode set to: {'PR' if control_mode == unitree_interface.ControlMode.PR else 'AB'}")
+            except ImportError:
+                logger.warning("unitree_interface C++ binding not found, falling back to sdk2py backend")
+                self.backend = "sdk2py"
+
+                import sys
+
+                from unitree_sdk2py.core.channel import ChannelFactory
+
+                interface_name = self.interface_str
+                if sys.platform == "darwin" and interface_name == "lo":
+                    interface_name = "lo0"
+
+                ChannelFactory().Init(self.domain_id, interface_name)
+
+                self.command_sender = create_command_sender(self.robot_config)
+                self.state_processor = create_state_processor(self.robot_config)
         else:
             raise ValueError(f"Unsupported SDK_TYPE: {self.sdk_type}")
 
@@ -184,7 +194,6 @@ class InterfaceWrapper:
     def _setup_wireless_controller(self):
         """Setup wireless controller for joystick input."""
         if self.sdk_type == "unitree":
-            # Wireless controller is already initialized in the binding
             pass
         elif self.sdk_type == "booster":
             from holosoma_inference.sdk.command_sender.booster.joystick_message import (
@@ -276,7 +285,9 @@ class InterfaceWrapper:
         Returns an object with .lx, .ly, .rx, .keys, etc. for both backends.
         """
         if self.sdk_type == "unitree":
-            return self.unitree_interface.read_wireless_controller()
+            if self.backend == "binding":
+                return self.unitree_interface.read_wireless_controller()
+            return None
         if self.sdk_type == "booster":
             return self.booster_joystick_msg if hasattr(self, "booster_joystick_msg") else None
         return None

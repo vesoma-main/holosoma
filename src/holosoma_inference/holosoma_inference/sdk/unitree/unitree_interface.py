@@ -1,27 +1,41 @@
-"""Unitree robot interface using C++/pybind11 binding."""
+"""Unitree robot interface — C++ binding with pure-Python DDS fallback."""
+
+import sys
 
 import numpy as np
+from loguru import logger
 
 from holosoma_inference.config.config_types import RobotConfig
 from holosoma_inference.sdk.base.base_interface import BaseInterface
 
 
 class UnitreeInterface(BaseInterface):
-    """Interface for Unitree robots using C++/pybind11 binding."""
+    """Interface for Unitree robots.
+
+    Tries the C++ pybind11 binding first; falls back to pure-Python DDS
+    (unitree_sdk2py) on platforms where the binding is unavailable (e.g. macOS).
+    """
 
     def __init__(self, robot_config: RobotConfig, domain_id=0, interface_str=None, use_joystick=True):
         super().__init__(robot_config, domain_id, interface_str, use_joystick)
         self._unitree_motor_order = None
         self._kp_level = 1.0
         self._kd_level = 1.0
-        self._init_binding()
+        self._use_sdk2py = False
+
+        try:
+            self._init_binding()
+        except ImportError:
+            logger.warning("unitree_interface C++ binding not found, falling back to sdk2py")
+            self._init_sdk2py()
+            self._use_sdk2py = True
+
+    # ------------------------------------------------------------------
+    # C++ binding initialisation
+    # ------------------------------------------------------------------
 
     def _init_binding(self):
-        """Initialize C++/pybind11 binding."""
-        try:
-            import unitree_interface
-        except ImportError as e:
-            raise ImportError("unitree_interface python binding not found.") from e
+        import unitree_interface
 
         robot_type_map = {
             "G1": unitree_interface.RobotType.G1,
@@ -38,12 +52,48 @@ class UnitreeInterface(BaseInterface):
         )
         self.unitree_interface.set_control_mode(unitree_interface.ControlMode.PR)
 
-        # GO2 SDK motor order differs from joint order
         if self.robot_config.robot.lower() == "go2":
             self._unitree_motor_order = (3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8)
 
+    # ------------------------------------------------------------------
+    # Pure-Python DDS (sdk2py) initialisation
+    # ------------------------------------------------------------------
+
+    def _init_sdk2py(self):
+        from unitree_sdk2py.core.channel import ChannelFactory
+
+        from holosoma_inference.sdk.command_sender import create_command_sender
+        from holosoma_inference.sdk.state_processor import create_state_processor
+
+        interface_name = self.interface_str
+        if sys.platform == "darwin" and interface_name == "lo":
+            interface_name = "lo0"
+
+        ChannelFactory().Init(self.domain_id, interface_name)
+
+        self._command_sender = create_command_sender(self.robot_config)
+        self._state_processor = create_state_processor(self.robot_config)
+
+    # ------------------------------------------------------------------
+    # Config propagation
+    # ------------------------------------------------------------------
+
+    def update_config(self, robot_config: RobotConfig):
+        """Propagate updated config to internal sdk2py components."""
+        super().update_config(robot_config)
+        if self._use_sdk2py:
+            self._command_sender.config = robot_config
+            self._state_processor.config = robot_config
+
+    # ------------------------------------------------------------------
+    # State
+    # ------------------------------------------------------------------
+
     def get_low_state(self) -> np.ndarray:
         """Get robot state as numpy array."""
+        if self._use_sdk2py:
+            return self._state_processor.get_robot_state_data()
+
         state = self.unitree_interface.read_low_state()
         base_pos = np.zeros(3)
         quat = np.array(state.imu.quat)
@@ -63,6 +113,10 @@ class UnitreeInterface(BaseInterface):
 
         return np.concatenate([base_pos, quat, joint_pos, base_lin_vel, base_ang_vel, joint_vel]).reshape(1, -1)
 
+    # ------------------------------------------------------------------
+    # Command
+    # ------------------------------------------------------------------
+
     def send_low_command(
         self,
         cmd_q: np.ndarray,
@@ -73,6 +127,12 @@ class UnitreeInterface(BaseInterface):
         kd_override: np.ndarray = None,
     ):
         """Send low-level command to robot."""
+        if self._use_sdk2py:
+            self._command_sender.send_command(
+                cmd_q, cmd_dq, cmd_tau, dof_pos_latest, kp_override=kp_override, kd_override=kd_override
+            )
+            return
+
         cmd_q_target = np.zeros(self.robot_config.num_motors)
         cmd_dq_target = np.zeros(self.robot_config.num_motors)
         cmd_tau_target = np.zeros(self.robot_config.num_motors)
@@ -102,8 +162,14 @@ class UnitreeInterface(BaseInterface):
 
         self.unitree_interface.write_low_command(cmd)
 
+    # ------------------------------------------------------------------
+    # Joystick
+    # ------------------------------------------------------------------
+
     def get_joystick_msg(self):
         """Get wireless controller message."""
+        if self._use_sdk2py:
+            return None
         return self.unitree_interface.read_wireless_controller()
 
     def get_joystick_key(self, wc_msg=None):
@@ -114,22 +180,31 @@ class UnitreeInterface(BaseInterface):
             return None
         return self._wc_key_map.get(getattr(wc_msg, "keys", 0), None)
 
+    # ------------------------------------------------------------------
+    # Gains
+    # ------------------------------------------------------------------
+
     @property
     def kp_level(self):
-        """Get proportional gain level."""
+        if self._use_sdk2py:
+            return getattr(self._command_sender, "kp_level", self._kp_level)
         return self._kp_level
 
     @kp_level.setter
     def kp_level(self, value):
-        """Set proportional gain level."""
         self._kp_level = value
+        if self._use_sdk2py and hasattr(self._command_sender, "kp_level"):
+            self._command_sender.kp_level = value
 
     @property
     def kd_level(self):
-        """Get derivative gain level."""
+        if self._use_sdk2py:
+            return getattr(self._command_sender, "kd_level", self._kd_level)
         return self._kd_level
 
     @kd_level.setter
     def kd_level(self, value):
-        """Set derivative gain level."""
         self._kd_level = value
+        if self._use_sdk2py and hasattr(self._command_sender, "kd_level"):
+            self._command_sender.kd_level = value
+
