@@ -60,7 +60,12 @@ if [[ ! -f $SENTINEL_FILE ]]; then
   cd $WORKSPACE_DIR/IsaacLab
   # work-around for egl_probe cmake max version issue
   export CMAKE_POLICY_VERSION_MINIMUM=3.5
+  # work-around for isaaclab.sh using 'tabs 4' which fails with set -e in non-interactive terminals
+  export TERM=${TERM:-xterm}
+  # work-around for flatdict/pkg_resources incompatibility with setuptools>=80 in pip build isolation
+  export PIP_NO_BUILD_ISOLATION=1
   ./isaaclab.sh --install
+  unset PIP_NO_BUILD_ISOLATION
 
  # Install Holosoma
   pip install -U pip
