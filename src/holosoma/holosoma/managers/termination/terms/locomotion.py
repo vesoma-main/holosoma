@@ -31,8 +31,6 @@ def contact_forces_exceeded(
 
 def gravity_tilt_exceeded(env, threshold_x: float, threshold_y: float) -> torch.Tensor:
     """Terminate if projected gravity exceeds roll/pitch thresholds."""
-    if not getattr(env.config.termination, "terminate_by_gravity", False):
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     grav = get_projected_gravity(env)
     tilt_x = torch.abs(grav[:, 0]) > threshold_x
     tilt_y = torch.abs(grav[:, 1]) > threshold_y
@@ -41,41 +39,33 @@ def gravity_tilt_exceeded(env, threshold_x: float, threshold_y: float) -> torch.
 
 def base_height_below_threshold(env, min_height: float) -> torch.Tensor:
     """Terminate if base height drops below threshold."""
-    if not getattr(env.config.termination, "terminate_by_low_height", False):
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     base_height = env.simulator.robot_root_states[:, 2]
     return base_height < min_height
 
 
 def dof_position_limit_exceeded(env, probability: float = 1.0) -> torch.Tensor:
     """Terminate when DOF position limits are exceeded."""
-    if not getattr(env.config.termination, "terminate_when_close_to_dof_pos_limit", False):
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     lower_violation = -(env.simulator.dof_pos - env.simulator.dof_pos_limits_termination[:, 0]).clip(max=0.0)
     upper_violation = (env.simulator.dof_pos - env.simulator.dof_pos_limits_termination[:, 1]).clip(min=0.0)
     violation = torch.sum(lower_violation + upper_violation, dim=1) > 0.0
     return _apply_probability(violation, probability, env.device)
 
 
-def dof_velocity_limit_exceeded(env, probability: float = 1.0) -> torch.Tensor:
+def dof_velocity_limit_exceeded(env, probability: float = 1.0, scale: float = 1.0) -> torch.Tensor:
     """Terminate when DOF velocity limits are exceeded."""
-    if not getattr(env.config.termination, "terminate_when_close_to_dof_vel_limit", False):
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     delta = (
         torch.abs(env.simulator.dof_vel)
-        - env.dof_vel_limits * env.config.termination_scales.termination_close_to_dof_vel_limit
+        - env.dof_vel_limits * scale
     ).clip(min=0.0, max=1.0)
     violation = torch.sum(delta, dim=1) > 0.0
     return _apply_probability(violation, probability, env.device)
 
 
-def torque_limit_exceeded(env, probability: float = 1.0) -> torch.Tensor:
+def torque_limit_exceeded(env, probability: float = 1.0, scale: float = 1.0) -> torch.Tensor:
     """Terminate when actuator torques exceed limits."""
-    if not getattr(env.config.termination, "terminate_when_close_to_torque_limit", False):
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     torques = env.action_manager.get_term("joint_control").torques
     delta = (
-        torch.abs(torques) - env.torque_limits * env.config.termination_scales.termination_close_to_torque_limit
+        torch.abs(torques) - env.torque_limits * scale
     ).clip(min=0.0, max=1.0)
     violation = torch.sum(delta, dim=1) > 0.0
     return _apply_probability(violation, probability, env.device)
